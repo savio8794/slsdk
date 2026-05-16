@@ -1,0 +1,19 @@
+services:
+  slskd:
+    image: slskd/slskd:latest
+    container_name: slskd
+    ports:
+      - "5030:5030"
+      - "50300:50300"
+    environment:
+      - SLSKD_REMOTE_CONFIGURATION=true
+      - SLSKD_SLSK_USERNAME=peracio
+      - SLSKD_SLSK_PASSWORD=S@vio770621
+      - SLSKD_WEB_AUTHENTICATION_USERNAME=admin
+      - SLSKD_WEB_AUTHENTICATION_PASSWORD=admin123
+    volumes:
+      - ~/slskd/config:/app/config
+      - ~/slskd/config/slskd.yml:/app/slskd.yml
+      - ~/slskd/downloads:/app/downloads
+      - ~/slskd/incomplete:/app/incomplete
+    restart: unless-stopped

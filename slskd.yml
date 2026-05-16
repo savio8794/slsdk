@@ -1,0 +1,30 @@
+# ============================================================
+#  Configuracao do slskd - CORRIGIDA
+# ============================================================
+
+slskd:
+  remote_configuration: true
+  downloads:
+    directory: /app/downloads
+    strategy: none
+    incomplete: /app/downloads/.incomplete
+
+soulseek:
+  username: "peracio"
+  password: "S@vio770621"
+  listen_port: 50300
+
+web:
+  authentication:
+    username: "slskd"
+    password: "slskd"
+  https:
+    enabled: false
+  port: 5030
+
+shares:
+  directories:
+    - /app/downloads
+
+logging:
+  level: Information
