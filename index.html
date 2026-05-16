@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLSKD Downloader</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0f; --surface:#12121a; --border:#1e1e2e;
+    --accent:#7c6af7; --accent2:#f7c56a; --green:#4af7a0;
+    --red:#f76a6a; --yellow:#f7c56a; --text:#e8e8f0; --muted:#5a5a7a;
+    --mono:'JetBrains Mono',monospace; --sans:'Syne',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;overflow:hidden;}
+  .layout{display:grid;grid-template-columns:300px 1fr;grid-template-rows:64px 1fr;height:100vh;}
+
+  header{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;}
+  .logo{font-size:20px;font-weight:800;letter-spacing:-.5px;}
+  .logo span{color:var(--accent);}
+  .counters{margin-left:auto;display:flex;gap:24px;align-items:center;}
+  .counter{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .counter-val{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;}
+  .counter-val.green{color:var(--green);} .counter-val.red{color:var(--red);}
+  .counter-val.yellow{color:var(--yellow);} .counter-val.purple{color:var(--accent);}
+  .counter-val.sucesso{color:var(--accent2);}
+  .counter-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+
+  aside{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+  .panel{padding:18px 20px;border-bottom:1px solid var(--border);}
+  .panel-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+
+  input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;transition:border-color .2s;}
+  input[type="text"]:focus{border-color:var(--accent);}
+  .field-label{font-size:11px;color:var(--muted);display:block;margin:10px 0 4px;}
+  .field-label:first-child{margin-top:0;}
+  .col-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .col-row label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;}
+
+  .btn{border:none;border-radius:6px;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:600;padding:8px 14px;transition:all .15s;letter-spacing:.3px;}
+  .btn:active{transform:scale(.97);}
+  .btn-load{background:var(--border);color:var(--text);width:100%;margin-top:8px;}
+  .btn-load:hover{background:#2a2a3e;}
+  .btn-start{background:var(--accent);color:#fff;flex:1;}
+  .btn-start:hover{background:#6a58e8;}
+  .btn-pause{background:var(--yellow);color:#000;flex:1;}
+  .btn-pause:hover{background:#e8b058;}
+  .btn-stop{background:var(--red);color:#fff;flex:1;}
+  .btn-stop:hover{background:#e85a5a;}
+  .btn-export{background:var(--accent2);color:#000;width:100%;margin-top:8px;}
+  .btn-export:hover{background:#e8b058;}
+  .btn-reset{background:transparent;color:var(--red);border:1px solid rgba(247,106,106,.4);font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;font-family:var(--sans);font-weight:600;transition:all .15s;width:100%;}
+  .btn-reset:hover{background:rgba(247,106,106,.1);}
+  .btn-disabled{opacity:.4;pointer-events:none;}
+  .ctrl-row{display:flex;gap:8px;margin-top:12px;}
+
+  .progress-wrap{background:var(--bg);border-radius:4px;height:6px;overflow:hidden;margin:12px 0 4px;}
+  .progress-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width .4s ease;width:0%;}
+  .progress-label{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:middle;}
+  .status-dot.running{background:var(--green);animation:pulse 1s infinite;}
+  .status-dot.paused{background:var(--yellow);}
+  .status-dot.stopped{background:var(--muted);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+  .cfg-row{margin-bottom:14px;}
+  .cfg-row>label{font-size:11px;color:var(--muted);display:block;margin-bottom:6px;}
+  .format-checks{display:flex;gap:8px;}
+  .fmt-btn{padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .15s;font-weight:600;}
+  .fmt-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  input[type="range"]{width:100%;accent-color:var(--accent);}
+  .range-val{font-family:var(--mono);font-size:12px;color:var(--accent2);float:right;}
+
+  .toggle-wrap{display:flex;gap:6px;margin-bottom:8px;}
+  .toggle-btn{flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--sans);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center;}
+  .toggle-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .org-buttons{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+  .org-btn{flex:1;padding:6px 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--mono);font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center;}
+  .org-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .autosave{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);font-family:var(--mono);opacity:0;transition:opacity .3s;}
+  .autosave.show{opacity:1;}
+  .autosave-dot{width:5px;height:5px;border-radius:50%;background:var(--green);}
+
+  .estimativa-card{background:var(--bg);border-radius:8px;padding:8px;margin-top:12px;font-family:var(--mono);font-size:11px;}
+  .estimativa-row{display:flex;justify-content:space-between;margin-bottom:4px;}
+  .estimativa-row:last-child{margin-bottom:0;}
+  .estimativa-label{color:var(--muted);}
+  .estimativa-restante{color:var(--accent2);font-weight:700;}
+  .estimativa-total{color:var(--muted);}
+
+  main{display:grid;grid-template-rows:1fr 220px;overflow:hidden;}
+  .table-wrap{overflow-y:auto;padding:20px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);padding:0 12px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1;}
+  tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+  tbody tr:hover{background:rgba(124,106,247,.05);}
+  tbody td{padding:10px 12px;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
+  td:first-child{font-family:var(--sans);font-size:13px;}
+
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.5px;}
+  .badge-pendente{background:#1e1e2e;color:var(--muted);}
+  .badge-buscando{background:rgba(124,106,247,.2);color:var(--accent);}
+  .badge-baixando{background:rgba(74,247,160,.15);color:var(--green);}
+  .badge-baixado{background:rgba(74,247,160,.25);color:var(--green);}
+  .badge-erro{background:rgba(247,106,106,.2);color:var(--red);}
+  .badge-nao-encontrado{background:rgba(247,197,106,.15);color:var(--yellow);}
+  .fmt-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;font-family:var(--mono);}
+  .fmt-tag.flac{background:rgba(124,106,247,.3);color:var(--accent);}
+  .fmt-tag.mp3{background:rgba(74,247,160,.2);color:var(--green);}
+  .fmt-tag.wav{background:rgba(247,197,106,.2);color:var(--yellow);}
+
+  .log-panel{background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;}
+  .log-header{padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);}
+  .log-body{flex:1;overflow-y:auto;padding:8px 16px;font-family:var(--mono);font-size:11px;line-height:1.7;}
+  .log-line{display:block;}
+  .log-line.error{color:var(--red);} .log-line.warn{color:var(--yellow);} .log-line.info{color:var(--text);}
+  .log-ts{color:var(--muted);margin-right:8px;}
+  .atual-label{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .atual-label span{color:var(--accent2);}
+  .empty{text-align:center;padding:60px 20px;color:var(--muted);}
+  .empty-icon{font-size:48px;margin-bottom:12px;}
+  .empty-text{font-size:14px;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <header>
+    <div class="logo">SLSKD<span>.</span>AUTO</div>
+    <div class="counters">
+      <div class="counter"><div class="counter-val green" id="cnt-baixados">0</div><div class="counter-label">Baixados</div></div>
+      <div class="counter"><div class="counter-val red" id="cnt-erros">0</div><div class="counter-label">Erros</div></div>
+      <div class="counter"><div class="counter-val yellow" id="cnt-pendentes">0</div><div class="counter-label">Pendentes</div></div>
+      <div class="counter"><div class="counter-val purple" id="cnt-total">0</div><div class="counter-label">Total</div></div>
+      <div class="counter"><div class="counter-val sucesso" id="cnt-sucesso">0%</div><div class="counter-label">Sucesso</div></div>
+    </div>
+  </header>
+
+  <aside>
+    <div class="panel">
+      <div class="panel-title">Arquivo Excel</div>
+      <label class="field-label">Caminho</label>
+      <input type="text" id="excel-path" placeholder="/home/savio/slskd/musicas.xlsx">
+      <div class="col-row">
+        <div><label>Coluna Música</label><input type="text" id="col-musica" value="Song"></div>
+        <div><label>Coluna Artista</label><input type="text" id="col-artista" value="Artist"></div>
+      </div>
+      <button class="btn btn-load" onclick="loadExcel()">Carregar Excel</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Controles</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span class="status-dot stopped" id="status-dot"></span>
+        <span id="status-txt" style="font-size:12px;color:var(--muted)">Parado</span>
+      </div>
+      <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="progress-label" id="progress-label">0 / 0</div>
+      
+      <div class="estimativa-card">
+        <div class="estimativa-row">
+          <span class="estimativa-label">⏱️ Tempo restante</span>
+          <span class="estimativa-restante" id="estimativa-restante">—</span>
+        </div>
+        <div class="estimativa-row">
+          <span class="estimativa-label">📊 Tempo total estimado</span>
+          <span class="estimativa-total" id="estimativa-total">—</span>
+        </div>
+      </div>
+      
+      <div class="atual-label" id="atual-label">—</div>
+      <div class="ctrl-row">
+        <button class="btn btn-start" id="btn-start" onclick="startDownload()">Start</button>
+        <button class="btn btn-pause btn-disabled" id="btn-pause" onclick="pauseDownload()">Pause</button>
+        <button class="btn btn-stop btn-disabled" id="btn-stop" onclick="stopDownload()">Stop</button>
+      </div>
+      <button class="btn btn-export" onclick="exportNotFound()">Exportar nao encontrados</button>
+      <button class="btn btn-reset" style="margin-top:8px;background:rgba(124,106,247,.2);border:1px solid var(--accent);color:var(--accent);" onclick="fixPermissions()">Corrigir permissoes</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        Configuracoes
+        <span class="autosave" id="autosave-badge"><span class="autosave-dot"></span>salvo</span>
+      </div>
+
+      <div class="cfg-row">
+        <label>Formatos aceitos</label>
+        <div class="format-checks">
+          <button class="fmt-btn active" data-fmt="flac" onclick="toggleFmt(this);onCfgChange()">FLAC</button>
+          <button class="fmt-btn active" data-fmt="wav" onclick="toggleFmt(this);onCfgChange()">WAV</button>
+          <button class="fmt-btn active" data-fmt="mp3" onclick="toggleFmt(this);onCfgChange()">MP3</button>
+        </div>
+      </div>
+
+      <div class="cfg-row">
+        <label>Bitrate minimo MP3 <span class="range-val" id="br-val">192 kbps</span></label>
+        <input type="range" id="br-range" min="128" max="320" step="32" value="192" oninput="onCfgChange()">
+      </div>
+
+      <div class="cfg-row">
+        <label>Tempo de busca <span class="range-val" id="tb-val">20 s</span></label>
+        <input type="range" id="tb-range" min="5" max="60" step="5" value="20" oninput="onCfgChange()">
+      </div>
+
+      <div class="cfg-row">
+        <label>Organizacao das pastas</label>
+        <div class="org-buttons">
+          <button class="org-btn active" data-org="flat" onclick="setOrganizacao('flat')">Flat (Raiz)</button>
+          <button class="org-btn" data-org="pasta_unica" onclick="setOrganizacao('pasta_unica')">Pasta unica</button>
+          <button class="org-btn" data-org="artista" onclick="setOrganizacao('artista')">Artista/Musica</button>
+          <button class="org-btn" data-org="pasta_personalizada" onclick="setOrganizacao('pasta_personalizada')">Nome proprio</button>
+        </div>
+      </div>
+
+      <div class="cfg-row" id="pasta-personalizada-row" style="display:none;">
+        <label>Nome da pasta <span style="color:var(--muted);font-weight:400;">(opcional)</span></label>
+        <input type="text" id="pasta-personalizada" placeholder="Ex: Minha Playlist"
+               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;transition:border-color .2s;"
+               oninput="onCfgChange()">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Todas as musicas serao salvas nesta pasta</div>
+      </div>
+
+      <button class="btn btn-reset" onclick="resetConfig()">Reset configuracoes</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Musica</th><th>Artista</th><th>Status</th><th>Formato</th><th>Bitrate</th><th>Tamanho</th><th>Usuario</th></tr>
+        </thead>
+        <tbody id="table-body">
+          <tr><td colspan="7"><div class="empty"><div class="empty-icon">🎵</div><div class="empty-text">Carregue um arquivo Excel para comecar</div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="log-panel">
+      <div class="log-header">
+        <span class="status-dot running" id="log-dot" style="animation:none"></span>
+        Log em tempo real
+        <button class="btn btn-load" style="margin-left:auto;padding:3px 10px;font-size:10px;width:auto;" onclick="clearLog()">Limpar</button>
+      </div>
+      <div class="log-body" id="log-body"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const API = 'http://localhost:8081/api';
+const LS_KEY = 'slskd_cfg_v2';
+
+const DEFAULTS = {
+  formatos: ['flac', 'wav', 'mp3'],
+  bitrate: 192,
+  tempo: 20,
+  organizacao_modo: 'flat',
+  excel_path: '',
+  col_musica: 'Song',
+  col_artista: 'Artist',
+  pasta_personalizada: '',
+};
+
+let autoSaveTimer = null;
+let autosaveFlash = null;
+let pollingInterval = null;
+
+function lsLoad() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_KEY) || '{}') }; }
+  catch { return { ...DEFAULTS }; }
+}
+
+function lsSave() {
+  const cfg = readUI();
+  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+  flashAutosave();
+}
+
+function readUI() {
+  return {
+    formatos: [...document.querySelectorAll('.fmt-btn.active')].map(b => b.dataset.fmt),
+    bitrate: parseInt(document.getElementById('br-range').value),
+    tempo: parseInt(document.getElementById('tb-range').value),
+    organizacao_modo: document.querySelector('.org-btn.active')?.dataset.org || 'flat',
+    excel_path: document.getElementById('excel-path').value.trim(),
+    col_musica: document.getElementById('col-musica').value.trim(),
+    col_artista: document.getElementById('col-artista').value.trim(),
+    pasta_personalizada: document.getElementById('pasta-personalizada').value.trim(),
+  };
+}
+
+function applyUI(cfg) {
+  document.querySelectorAll('.fmt-btn').forEach(b =>
+    b.classList.toggle('active', cfg.formatos.includes(b.dataset.fmt))
+  );
+  document.getElementById('br-range').value = cfg.bitrate;
+  document.getElementById('tb-range').value = cfg.tempo;
+  document.getElementById('br-val').textContent = cfg.bitrate + ' kbps';
+  document.getElementById('tb-val').textContent = cfg.tempo + ' s';
+  if (cfg.excel_path) document.getElementById('excel-path').value = cfg.excel_path;
+  if (cfg.col_musica) document.getElementById('col-musica').value = cfg.col_musica;
+  if (cfg.col_artista) document.getElementById('col-artista').value = cfg.col_artista;
+  setOrganizacao(cfg.organizacao_modo || 'flat', false);
+  if (cfg.pasta_personalizada) document.getElementById('pasta-personalizada').value = cfg.pasta_personalizada;
+  togglePastaPersonalizada(cfg.organizacao_modo || 'flat');
+}
+
+function onCfgChange() {
+  document.getElementById('br-val').textContent = document.getElementById('br-range').value + ' kbps';
+  document.getElementById('tb-val').textContent = document.getElementById('tb-range').value + ' s';
+  
+  const statusAtual = { 
+    total: parseInt(document.getElementById('cnt-total').textContent) || 0,
+    baixados: parseInt(document.getElementById('cnt-baixados').textContent) || 0,
+    erros: parseInt(document.getElementById('cnt-erros').textContent) || 0 
+  };
+  atualizarEstimativa(statusAtual);
+  
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    lsSave();
+    syncServer();
+  }, 600);
+}
+
+function flashAutosave() {
+  const el = document.getElementById('autosave-badge');
+  el.classList.add('show');
+  clearTimeout(autosaveFlash);
+  autosaveFlash = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+async function syncServer() {
+  const cfg = readUI();
+  try {
+    await fetch(`${API}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        formatos: cfg.formatos,
+        bitrate_minimo: cfg.bitrate,
+        tempo_busca: cfg.tempo,
+        organizacao_modo: cfg.organizacao_modo,
+        pasta_download: '',
+        pasta_personalizada: cfg.pasta_personalizada,
+      })
+    });
+  } catch(e) {}
+}
+
+function resetConfig() {
+  if (!confirm('Resetar todas as configuracoes para o padrao?')) return;
+  localStorage.removeItem(LS_KEY);
+  applyUI(DEFAULTS);
+  syncServer();
+  appendLog({ ts: now(), msg: 'Configuracoes resetadas', nivel: 'warn' });
+}
+
+function setOrganizacao(modo, save = true) {
+  document.querySelectorAll('.org-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.org === modo);
+  });
+  togglePastaPersonalizada(modo);
+  if (save) onCfgChange();
+}
+
+function togglePastaPersonalizada(modo) {
+  const row = document.getElementById('pasta-personalizada-row');
+  if (row) {
+    row.style.display = (modo === 'pasta_personalizada') ? 'block' : 'none';
+  }
+}
+
+function startPolling() {
+  if (pollingInterval) return;
+  pollingInterval = setInterval(fetchStatus, 1000);
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch(`${API}/status`);
+    renderStatus(await r.json());
+  } catch(e) {}
+}
+
+function formatarTempo(seg) {
+  if (seg <= 0) return '—';
+  const minutos = Math.floor(seg / 60);
+  const horas = Math.floor(minutos / 60);
+  const restoMinutos = minutos % 60;
+  const segundos = seg % 60;
+
+  if (horas > 0) return `${horas}h ${restoMinutos}min`;
+  if (minutos > 0) return `${minutos}min ${segundos}s`;
+  return `${seg}s`;
+}
+
+function atualizarEstimativa(status) {
+  const tempoBuscaSeg = parseInt(document.getElementById('tb-range').value) || 20;
+  const tempoDownloadSeg = 5;
+  const tempoMedioPorMusica = tempoBuscaSeg + tempoDownloadSeg;
+
+  const total = status.total || 0;
+  const processadas = (status.baixados || 0) + (status.erros || 0);
+  const pendentes = Math.max(0, total - processadas);
+
+  const tempoRestanteSeg = pendentes * tempoMedioPorMusica;
+  const tempoTotalSeg = total * tempoMedioPorMusica;
+
+  document.getElementById('estimativa-restante').textContent = formatarTempo(tempoRestanteSeg);
+  document.getElementById('estimativa-total').textContent = formatarTempo(tempoTotalSeg);
+}
+
+function renderStatus(d) {
+  document.getElementById('cnt-baixados').textContent = d.baixados;
+  document.getElementById('cnt-erros').textContent = d.erros;
+  document.getElementById('cnt-pendentes').textContent = d.pendentes;
+  document.getElementById('cnt-total').textContent = d.total;
+
+  const totalProcessadas = d.baixados + d.erros;
+  const taxaSucesso = totalProcessadas > 0 ? Math.round((d.baixados / totalProcessadas) * 100) : 0;
+  document.getElementById('cnt-sucesso').textContent = taxaSucesso + '%';
+
+  const done = d.baixados + d.erros;
+  const pct = d.total > 0 ? (done / d.total * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = done + ' / ' + d.total;
+
+  const atualEl = document.getElementById('atual-label');
+  atualEl.innerHTML = d.atual ? '▶ <span>' + escHtml(d.atual) + '</span>' : '—';
+
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-txt');
+  dot.className = 'status-dot';
+  if (d.running && !d.paused) {
+    dot.classList.add('running');
+    txt.textContent = 'Rodando';
+  } else if (d.paused) {
+    dot.classList.add('paused');
+    txt.textContent = 'Pausado';
+  } else {
+    dot.classList.add('stopped');
+    txt.textContent = 'Parado';
+  }
+
+  const btnStart = document.getElementById('btn-start');
+  const btnPause = document.getElementById('btn-pause');
+  const btnStop = document.getElementById('btn-stop');
+  if (d.running) {
+    btnStart.classList.add('btn-disabled');
+    btnPause.classList.remove('btn-disabled');
+    btnStop.classList.remove('btn-disabled');
+    btnPause.textContent = d.paused ? 'Retomar' : 'Pause';
+  } else {
+    btnStart.classList.remove('btn-disabled');
+    btnPause.classList.add('btn-disabled');
+    btnStop.classList.add('btn-disabled');
+    btnPause.textContent = 'Pause';
+  }
+
+  atualizarEstimativa(d);
+  renderTable(d.musicas);
+}
+
+function renderTable(musicas) {
+  const tbody = document.getElementById('table-body');
+  if (!musicas || musicas.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">🎵</div><div class="empty-text">Carregue um arquivo Excel para comecar</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = musicas.map(m => {
+    const sc = 'badge-' + m.status.replace(/\s/g, '-').replace(/[^a-z-]/g, '');
+    const fmt = m.formato ? m.formato.toLowerCase() : '';
+    const br = m.bitrate ? m.bitrate + ' kbps' : '—';
+    const sz = m.tamanho ? m.tamanho + ' MB' : '—';
+    return '<tr>' +
+      '<td title="' + escHtml(m.musica) + '">' + escHtml(m.musica) + '</td>' +
+      '<td title="' + escHtml(m.artista) + '">' + escHtml(m.artista) + '</td>' +
+      '<td><span class="badge ' + sc + '">' + m.status + '</span></td>' +
+      '<td>' + (m.formato ? '<span class="fmt-tag ' + fmt + '">' + m.formato + '</span>' : '—') + '</td>' +
+      '<td>' + br + '</td>' +
+      '<td>' + sz + '</td>' +
+      '<td title="' + escHtml(m.usuario) + '">' + (escHtml(m.usuario) || '—') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function startSSE() {
+  const es = new EventSource(API + '/logs');
+  const dot = document.getElementById('log-dot');
+  es.onmessage = e => {
+    appendLog(JSON.parse(e.data));
+    dot.style.animation = 'pulse .3s';
+    setTimeout(() => dot.style.animation = 'none', 400);
+  };
+}
+
+function appendLog(item) {
+  const body = document.getElementById('log-body');
+  const line = document.createElement('span');
+  line.className = 'log-line ' + item.nivel;
+  line.innerHTML = '<span class="log-ts">' + item.ts + '</span>' + escHtml(item.msg);
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log-body').innerHTML = ''; }
+
+async function loadExcel() {
+  const arquivo = document.getElementById('excel-path').value.trim();
+  const col_musica = document.getElementById('col-musica').value.trim();
+  const col_artista = document.getElementById('col-artista').value.trim();
+  onCfgChange();
+  try {
+    const r = await fetch(API + '/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ arquivo, col_musica, col_artista })
+    });
+    let d;
+    try { d = await r.json(); } catch(e) {
+      appendLog({ ts: now(), msg: 'Resposta invalida (status ' + r.status + ')', nivel: 'error' });
+      return;
+    }
+    if (d && d.ok) {
+      appendLog({ ts: now(), msg: 'Excel carregado: ' + d.total + ' musica(s)', nivel: 'info' });
+      fetchStatus();
+    } else {
+      appendLog({ ts: now(), msg: (d && d.erro ? d.erro : 'Erro (status ' + r.status + ')'), nivel: 'error' });
+    }
+  } catch(e) {
+    appendLog({ ts: now(), msg: 'Sem conexao com o servidor: ' + e, nivel: 'error' });
+  }
+}
+
+async function exportNotFound() {
+  try {
+    const response = await fetch(API + '/export/not-found', { method: 'POST' });
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nao_encontrados.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      appendLog({ ts: now(), msg: 'Arquivo "nao_encontrados.xlsx" exportado!', nivel: 'info' });
+    } else {
+      const error = await response.json();
+      appendLog({ ts: now(), msg: error.erro, nivel: 'error' });
+    }
+  } catch(e) {
+    appendLog({ ts: now(), msg: 'Erro ao exportar: ' + e, nivel: 'error' });
+  }
+}
+
+async function fixPermissions() {
+  appendLog({ ts: now(), msg: '🔧 Corrigindo permissoes da pasta downloads...', nivel: 'info' });
+  try {
+    const r = await fetch(API + '/fix-permissions', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog({ ts: now(), msg: '✅ ' + (d.mensagem || 'Permissoes corrigidas!'), nivel: 'info' });
+    } else {
+      appendLog({ ts: now(), msg: '❌ Erro: ' + (d.erro || 'Erro desconhecido'), nivel: 'error' });
+    }
+  } catch(e) {
+    appendLog({ ts: now(), msg: '❌ Erro de conexao: ' + e, nivel: 'error' });
+  }
+}
+
+async function startDownload() {
+  await syncServer();
+  const r = await fetch(API + '/start', { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) appendLog({ ts: now(), msg: d.erro, nivel: 'error' });
+}
+
+async function pauseDownload() { await fetch(API + '/pause', { method: 'POST' }); }
+async function stopDownload() { await fetch(API + '/stop', { method: 'POST' }); }
+
+function toggleFmt(btn) { btn.classList.toggle('active'); onCfgChange(); }
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function now() { return new Date().toTimeString().slice(0, 8); }
+
+(function init() {
+  applyUI(lsLoad());
+  startPolling();
+  startSSE();
+  fetchStatus();
+})();
+</script>
+</body>
+</html>
