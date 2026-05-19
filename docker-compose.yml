@@ -11,9 +11,12 @@ services:
       - SLSKD_SLSK_PASSWORD=S@vio770621
       - SLSKD_WEB_AUTHENTICATION_USERNAME=admin
       - SLSKD_WEB_AUTHENTICATION_PASSWORD=admin123
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
     volumes:
-      - ~/slskd/config:/app/config
-      - ~/slskd/config/slskd.yml:/app/slskd.yml
-      - ~/slskd/downloads:/app/downloads
-      - ~/slskd/incomplete:/app/incomplete
+      - /home/savio/slskd/config:/app/config
+      - /home/savio/slskd/config/slskd.yml:/app/slskd.yml
+      - /home/savio/slskd/downloads:/app/downloads
+      - /home/savio/slskd/incomplete:/app/incomplete
     restart: unless-stopped
