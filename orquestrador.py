@@ -117,7 +117,7 @@ def contar_arquivos(pasta: Path) -> dict:
 def aguardar_downloads(log, pasta: Path, timeout_min: int = 60):
     """
     Aguarda o slskd terminar os downloads monitorando a pasta.
-    Considera concluído quando nenhum arquivo novo aparece por 15s.
+    Considera concluído quando nenhum arquivo novo aparece por 30s.
     """
     log.info(f"⏳ Aguardando downloads em '{pasta}' (timeout: {timeout_min} min)...")
     log.info("   (Você pode acompanhar em http://localhost:5030)")
@@ -127,23 +127,18 @@ def aguardar_downloads(log, pasta: Path, timeout_min: int = 60):
     sem_mudanca  = 0
     inicio       = time.time()
     limite       = timeout_min * 60
-    intervalo    = 2.5  # Reduzido de 5s para 2.5s
-    
-    # Cache de arquivos já vistos para evitar recontagem completa
-    arquivos_vistos = set()
 
     while True:
-        # Contagem mais eficiente usando list comprehension direta
-        count = sum(1 for f in pasta.iterdir() if f.is_file() and f.suffix.lower() in {".mp3", ".flac", ".wav"})
+        count = sum(1 for f in pasta.rglob("*") if f.suffix.lower() in {".mp3", ".flac", ".wav"})
 
         if count != ultimo_count:
-            log.debug(f"  📥 Arquivos baixados até agora: {count}")
+            log.info(f"  📥 Arquivos baixados até agora: {count}")
             ultimo_count = count
             sem_mudanca  = 0
         else:
             sem_mudanca += 1
 
-        # 6 verificações sem mudança (15s) = downloads concluídos
+        # 6 verificações sem mudança (30s) = downloads concluídos
         if sem_mudanca >= 6 and count > 0:
             log.info(f"  ✅ Downloads estabilizaram em {count} arquivo(s).")
             break
@@ -152,7 +147,7 @@ def aguardar_downloads(log, pasta: Path, timeout_min: int = 60):
             log.warning(f"  ⚠️  Timeout de {timeout_min} min atingido.")
             break
 
-        time.sleep(intervalo)
+        time.sleep(5)
 
 
 def main():

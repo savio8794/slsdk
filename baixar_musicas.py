@@ -219,11 +219,16 @@ def fazer_busca(session, termo, log):
 
             return []
 
-        return aguardar_resultados(
-            session,
-            search_id,
-            log
-        )
+        resultados = aguardar_resultados(session, search_id, log)
+
+        # Deleta a busca para não entupir a fila nas próximas execuções
+        try:
+            session.delete(f"{SLSKD_URL}/api/v0/searches/{search_id}", timeout=10)
+            log.debug(f"Busca {search_id} deletada da fila")
+        except Exception:
+            pass
+
+        return resultados
 
     except Exception as e:
 
@@ -232,55 +237,109 @@ def fazer_busca(session, termo, log):
         return []
 
 
+TIMEOUT_BUSCA_ABSOLUTO = 60   # segundos máximos esperando peers
+TIMEOUT_ESTABILIDADE  = 8    # segundos sem crescimento → considera estável
+INTERVALO_POLLING     = 2    # segundos entre cada consulta
+
+
 def aguardar_resultados(session, search_id, log):
-    """Aguarda resultados da busca com polling inteligente e timeout dinâmico."""
-    
+    """
+    Aguarda a busca do slskd consultando GET /api/v0/searches/{id}
+    e inspecionando 'isComplete' + 'responses' dentro do objeto retornado.
+
+    O endpoint /searches/{id}/responses NÃO existe em todas as versões;
+    a API correta embute as respostas dentro do objeto principal da busca.
+    """
+
+    inicio       = time.time()
     ultimo_total = 0
-    ultimo_crescimento = time.time()
-    resultados = []
-    max_inatividade = 5  # segundos sem novos resultados para finalizar
-    
+    ultimo_cresc = time.time()
+
+    # ── Fase 1: aguarda sair do estado Queued ──────────────
+    log.info("⏳ Aguardando busca sair da fila...")
     while True:
+        if time.time() - inicio > 60:
+            log.warning("⌛ Timeout aguardando fila — busca nunca saiu de Queued")
+            return []
+        try:
+            r = session.get(f"{SLSKD_URL}/api/v0/searches/{search_id}", timeout=10)
+            if r.status_code == 200:
+                state = r.json().get("state", "")
+                if state != "Queued":
+                    log.info(f"▶ Busca iniciada (state={state})")
+                    break
+                log.debug(f"Ainda na fila... ({time.time()-inicio:.0f}s)")
+        except Exception as e:
+            log.debug(f"Erro aguardando fila: {e}")
+        time.sleep(2)
+
+    # ── Fase 2: polling de resultados ──────────────────────
+    while True:
+
+        agora   = time.time()
+        elapsed = agora - inicio
+
         try:
             r = session.get(
-                f"{SLSKD_URL}/api/v0/searches/{search_id}/responses",
+                f"{SLSKD_URL}/api/v0/searches/{search_id}",
                 timeout=10,
             )
 
             if r.status_code == 200:
-                resultados = r.json() or []
-                total = sum(len(x.get("files", [])) for x in resultados)
+                dados     = r.json()
+                respostas = dados.get("responses") or []
+                is_done   = dados.get("isComplete", False)
+                state     = dados.get("state", "")
 
-                log.debug(f"📦 Resultados atuais: {total}")
+                total = sum(len(p.get("files", [])) for p in respostas)
 
-                # Se encontrou muitos resultados rapidamente, pode parar antes
-                if total >= 50:
-                    log.info(f"✅ Muitos resultados ({total}), finalizando busca")
-                    return resultados
-
-                # resultados aumentaram
-                if total > ultimo_total:
+                if total != ultimo_total:
+                    log.info(
+                        f"📦 Resultados: {total} arquivos "
+                        f"(+{total - ultimo_total}) [{elapsed:.0f}s]"
+                    )
                     ultimo_total = total
-                    ultimo_crescimento = time.time()
+                    ultimo_cresc = agora
 
-                # se já encontrou algo e estabilizou
-                if total > 0 and time.time() - ultimo_crescimento > max_inatividade:
-                    log.info(f"✅ Busca estabilizada com {total} arquivos")
-                    return resultados
+                # Busca concluída pelo próprio slskd
+                if is_done or state in ("Completed", "TimedOut"):
+                    log.info(
+                        f"✅ Busca concluída ({total} arquivos, "
+                        f"{elapsed:.0f}s, state={state})"
+                    )
+                    return respostas
 
-                # timeout máximo ABSOLUTO (25s)
-                if time.time() - ultimo_crescimento > 25:
-                    log.warning(f"⌛ Timeout aguardando peers ({total} resultados)")
-                    return resultados
+                # Estabilizou localmente com resultados suficientes
+                if total >= 10 and (agora - ultimo_cresc) > TIMEOUT_ESTABILIDADE:
+                    log.info(
+                        f"✅ Estabilizou com {total} arquivos ({elapsed:.0f}s)"
+                    )
+                    return respostas
+
+                # Timeout absoluto de segurança
+                if elapsed > TIMEOUT_BUSCA_ABSOLUTO:
+                    log.warning(
+                        f"⌛ Timeout {TIMEOUT_BUSCA_ABSOLUTO}s — "
+                        f"retornando {total} arquivo(s)"
+                    )
+                    return respostas
+
+            elif r.status_code == 404:
+                log.error(f"Search ID {search_id} não encontrado (404)")
+                return []
+
+            else:
+                log.debug(f"Status inesperado: {r.status_code}")
 
         except Exception as e:
-            log.debug(f"Erro busca: {e}")
-        
-        time.sleep(0.5)  # Reduzido de 1s para 0.5s
+            log.debug(f"Erro ao consultar busca: {e}")
+
+        time.sleep(INTERVALO_POLLING)
+
+
 
 def buscar_musica(session, musica, artista, log):
-    """Busca música com tentativas progressivas e early stopping."""
-    
+
     musica_limpa = limpar_termo(musica)
     artista_limpo = limpar_termo(artista)
 
@@ -294,37 +353,65 @@ def buscar_musica(session, musica, artista, log):
     )
 
     tentativas = [
+
         # 1 — Busca normal completa
         f"{artista_limpo} {musica_limpa}",
+
         # 2 — Primeiro artista + música
         f"{primeiro_artista} {musica_limpa}",
-        # 3 — Artista + primeiras palavras
+
+        # 4 — Artista + primeiras palavras
         f"{primeiro_artista} {' '.join(musica_limpa.split()[:3])}",
     ]
 
     # Remove duplicatas mantendo ordem
     vistas = set()
-    tentativas = [t for t in tentativas if not (t.lower() in vistas or vistas.add(t.lower()))]
+
+    tentativas = [
+        t for t in tentativas
+        if not (
+            t.lower() in vistas
+            or vistas.add(t.lower())
+        )
+    ]
 
     melhores_resultados = []
-    
+
     for i, termo in enumerate(tentativas, 1):
+
         log.info(f"🔍 Tentativa {i}: {termo}")
 
-        resultados = fazer_busca(session, termo, log)
-        total = sum(len(r.get("files", [])) for r in resultados)
+        resultados = fazer_busca(
+            session,
+            termo,
+            log
+        )
+
+        total = sum(
+            len(r.get("files", []))
+            for r in resultados
+        )
 
         if total > 0:
-            log.info(f"📦 {total} arquivo(s) encontrado(s)")
+
+            log.info(f"📦 {total} arquivo(s) encontrado(s) na tentativa {i}")
 
             # guarda o melhor resultado até agora
-            if total > sum(len(r.get("files", [])) for r in melhores_resultados):
+            if total > sum(
+                len(r.get("files", []))
+                for r in melhores_resultados
+            ):
                 melhores_resultados = resultados
-            
-            # Early stopping: se encontrou muitos resultados, não precisa continuar
-            if total >= 30:
-                log.info(f"✅ Resultados suficientes ({total}), parando busca")
-                break
+
+        else:
+
+            log.warning(f"Nenhum resultado para tentativa {i}: '{termo}'")
+
+    total_final = sum(len(r.get("files", [])) for r in melhores_resultados)
+    if total_final == 0:
+        log.warning("⚠️ NENHUM resultado em nenhuma tentativa!")
+    else:
+        log.info(f"📦 Melhor tentativa retornou {total_final} arquivo(s)")
 
     # retorna o melhor conjunto encontrado
     return melhores_resultados
@@ -374,40 +461,87 @@ def filtrar_candidatos(
     prioridade,
     log
 ):
-    """Filtra candidatos com processamento otimizado."""
-    
+
     candidatos = []
 
     for resposta in resultados:
+
         usuario = resposta.get("username", "")
 
         for arq in resposta.get("files", []):
-            nome = arq.get("filename", "")
-            ext = nome.rsplit(".", 1)[-1].lower() if "." in nome else ""
-            
-            # Skip rápido se extensão não interessar
-            if ext not in formatos:
-                continue
 
-            bitrate_raw = arq.get("bitRate") or arq.get("bitrate") or 0
-            
+
+            nome = arq.get("filename", "")
+
+            ext = (
+                nome.rsplit(".", 1)[-1].lower()
+                if "." in nome else ""
+            )
+
+            bitrate_raw = (
+                arq.get("bitRate")
+                or arq.get("bitrate")
+                or 0
+            )
+
             try:
                 bitrate = int(float(bitrate_raw))
-            except (ValueError, TypeError):
+            except:
                 bitrate = 0
 
             tamanho = arq.get("size", 0) or 0
-            duracao = arq.get("length") or arq.get("duration") or 0
+            duracao = (
+                arq.get("length")
+                or arq.get("duration")
+                or 0
+            )
 
-            # Filtro rápido de tamanho antes de log
-            if tamanho < TAMANHO_MINIMO:
+            nome_lower = nome.lower()
+
+            log.debug(
+                f"ANALISANDO | "
+                f"ext={ext} | "
+                f"bitrate={bitrate} | "
+                f"size={tamanho/1e6:.1f}MB | "
+                f"nome={nome}"
+            )
+
+            if ext not in formatos:
+
+                log.debug(
+                    f"DESCARTADO FORMATO | "
+                    f"ext={ext} | "
+                    f"{nome}"
+                )
+
                 continue
 
-            # MP3: filtro de bitrate
+            if tamanho < TAMANHO_MINIMO:
+
+                log.debug(
+                    f"DESCARTADO TAMANHO | "
+                    f"size={tamanho/1e6:.1f}MB | "
+                    f"{nome}"
+                )
+
+                continue
+
             if ext == "mp3":
+
+                # bitrate desconhecido → aceita
                 if bitrate <= 0:
+
                     bitrate = 320
+
+                # rejeita somente muito ruins
                 elif bitrate < 192:
+
+                    log.debug(
+                        f"DESCARTADO BITRATE | "
+                        f"{bitrate}kbps | "
+                        f"{nome}"
+                    )
+
                     continue
 
             candidato = {
@@ -421,9 +555,13 @@ def filtrar_candidatos(
             }
 
             candidato["score"] = calcular_score(candidato)
+
             candidatos.append(candidato)
 
-    candidatos.sort(key=lambda x: x["score"], reverse=True)
+    candidatos.sort(
+        key=lambda x: x["score"],
+        reverse=True,
+    )
 
     log.info(f"🎯 {len(candidatos)} candidato(s) válido(s)")
 
@@ -514,14 +652,16 @@ def ler_excel(
     col_artista,
     log
 ):
-    """Lê Excel com otimização de leitura (somente colunas necessárias)."""
-    
+
     try:
-        wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+
+        wb = openpyxl.load_workbook(caminho)
+
         ws = wb.active
 
         cabecalho = {
-            str(cell.value).strip().lower(): cell.column - 1
+            str(cell.value).strip().lower():
+            cell.column - 1
             for cell in ws[1]
             if cell.value
         }
@@ -530,11 +670,15 @@ def ler_excel(
         col_a = col_artista.lower().strip()
 
         if col_m not in cabecalho:
+
             log.error(f"Coluna não encontrada: {col_musica}")
+
             sys.exit(1)
 
         if col_a not in cabecalho:
+
             log.error(f"Coluna não encontrada: {col_artista}")
+
             sys.exit(1)
 
         idx_m = cabecalho[col_m]
@@ -542,22 +686,37 @@ def ler_excel(
 
         musicas = []
 
-        for linha in ws.iter_rows(min_row=2, values_only=True):
-            musica = str(linha[idx_m]).strip() if linha[idx_m] else ""
-            artista = str(linha[idx_a]).strip() if linha[idx_a] else ""
+        for linha in ws.iter_rows(
+            min_row=2,
+            values_only=True
+        ):
+
+            musica = (
+                str(linha[idx_m]).strip()
+                if linha[idx_m]
+                else ""
+            )
+
+            artista = (
+                str(linha[idx_a]).strip()
+                if linha[idx_a]
+                else ""
+            )
 
             if musica and musica.lower() != "none":
-                musicas.append((musica, artista))
+
+                musicas.append(
+                    (musica, artista)
+                )
 
         log.info(f"🎵 {len(musicas)} música(s) carregadas")
-        
-        # Fecha workbook para liberar memória
-        wb.close()
 
         return musicas
 
     except FileNotFoundError:
+
         log.error(f"Excel não encontrado: {caminho}")
+
         sys.exit(1)
 
 

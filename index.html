@@ -106,7 +106,7 @@
   .badge-baixando{background:rgba(74,247,160,.15);color:var(--green);}
   .badge-baixado{background:rgba(74,247,160,.25);color:var(--green);}
   .badge-erro{background:rgba(247,106,106,.2);color:var(--red);}
-  .badge-nao-encontrado{background:rgba(247,197,106,.15);color:var(--yellow);}
+  .badge-nao-encontrado{background:rgba(180,180,200,.15);color:#aab0c0;}
   .fmt-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;font-family:var(--mono);}
   .fmt-tag.flac{background:rgba(124,106,247,.3);color:var(--accent);}
   .fmt-tag.mp3{background:rgba(74,247,160,.2);color:var(--green);}
@@ -177,8 +177,14 @@
         <button class="btn btn-pause btn-disabled" id="btn-pause" onclick="pauseDownload()">Pause</button>
         <button class="btn btn-stop btn-disabled" id="btn-stop" onclick="stopDownload()">Stop</button>
       </div>
-      <button class="btn btn-export" onclick="exportNotFound()">Exportar nao encontrados</button>
-      <button class="btn btn-reset" style="margin-top:8px;background:rgba(124,106,247,.2);border:1px solid var(--accent);color:var(--accent);" onclick="fixPermissions()">Corrigir permissoes</button>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-export" style="flex:1;margin-top:0;" onclick="exportNotFound()">Exportar Ñ Encontrados</button>
+        <button class="btn btn-reset" style="flex:1;margin-top:0;background:rgba(247,106,106,.15);border:1px solid rgba(247,106,106,.4);color:var(--red);" onclick="clearErrors()">Limpar Erros</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-export" style="flex:1;margin-top:0;background:var(--green);color:#000;" onclick="exportarHistoricoJSON()">Histórico JSON</button>
+        <button class="btn btn-reset" style="flex:1;margin-top:0;background:rgba(124,106,247,.2);border:1px solid var(--accent);color:var(--accent);" onclick="fixPermissions()">Permissões</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -252,7 +258,7 @@
 </div>
 
 <script>
-const API = 'http://localhost:8081/api';
+const API = 'http://localhost:8082/api';
 const LS_KEY = 'slskd_cfg_v2';
 
 const DEFAULTS = {
@@ -269,6 +275,9 @@ const DEFAULTS = {
 let autoSaveTimer = null;
 let autosaveFlash = null;
 let pollingInterval = null;
+let lastMusicasJSON = '';
+let logCount = 0;
+const MAX_LOG_LINES = 300;
 
 function lsLoad() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_KEY) || '{}') }; }
@@ -378,7 +387,7 @@ function togglePastaPersonalizada(modo) {
 
 function startPolling() {
   if (pollingInterval) return;
-  pollingInterval = setInterval(fetchStatus, 1000);
+  pollingInterval = setInterval(fetchStatus, 2000);
 }
 
 async function fetchStatus() {
@@ -464,7 +473,11 @@ function renderStatus(d) {
   }
 
   atualizarEstimativa(d);
-  renderTable(d.musicas);
+  const musicasJSON = JSON.stringify(d.musicas);
+  if (musicasJSON !== lastMusicasJSON) {
+    lastMusicasJSON = musicasJSON;
+    renderTable(d.musicas);
+  }
 }
 
 function renderTable(musicas) {
@@ -474,7 +487,7 @@ function renderTable(musicas) {
     return;
   }
   tbody.innerHTML = musicas.map(m => {
-    const sc = 'badge-' + m.status.replace(/\s/g, '-').replace(/[^a-z-]/g, '');
+    const sc = 'badge-' + m.status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s/g, '-').replace(/[^a-z-]/g, '');
     const fmt = m.formato ? m.formato.toLowerCase() : '';
     const br = m.bitrate ? m.bitrate + ' kbps' : '—';
     const sz = m.tamanho ? m.tamanho + ' MB' : '—';
@@ -506,10 +519,14 @@ function appendLog(item) {
   line.className = 'log-line ' + item.nivel;
   line.innerHTML = '<span class="log-ts">' + item.ts + '</span>' + escHtml(item.msg);
   body.appendChild(line);
+  if (++logCount > MAX_LOG_LINES) {
+    body.removeChild(body.firstChild);
+    logCount--;
+  }
   body.scrollTop = body.scrollHeight;
 }
 
-function clearLog() { document.getElementById('log-body').innerHTML = ''; }
+function clearLog() { document.getElementById('log-body').innerHTML = ''; logCount = 0; }
 
 async function loadExcel() {
   const arquivo = document.getElementById('excel-path').value.trim();
@@ -576,6 +593,22 @@ async function fixPermissions() {
   }
 }
 
+async function clearErrors() {
+  if (!confirm('Deseja limpar todas as músicas com erro da lista?')) return;
+  try {
+    const r = await fetch(API + '/clear-errors', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      appendLog({ ts: now(), msg: `🧹 Limpeza: ${d.removidos} música(s) com erro removidas.`, nivel: 'info' });
+      fetchStatus();
+    } else {
+      appendLog({ ts: now(), msg: 'Erro ao limpar erros: ' + (d.erro || 'Erro desconhecido'), nivel: 'error' });
+    }
+  } catch(e) {
+    appendLog({ ts: now(), msg: 'Erro de conexao: ' + e, nivel: 'error' });
+  }
+}
+
 async function startDownload() {
   await syncServer();
   const r = await fetch(API + '/start', { method: 'POST' });
@@ -599,6 +632,48 @@ function now() { return new Date().toTimeString().slice(0, 8); }
   startSSE();
   fetchStatus();
 })();
+
+// === BOTÃO EXPORTAR HISTÓRICO ===
+function exportarHistoricoJSON() {
+  fetch(`${API}/status`)
+    .then(r => r.json())
+    .then(d => {
+      const dados = d.musicas.map(m => ({
+        MUSICA: m.musica,
+        ARTISTA: m.artista,
+        STATUS: m.status,
+        FORMATO: m.formato || '',
+        BITRATE: m.bitrate || '',
+        TAMANHO: m.tamanho || '',
+        USUARIO: m.usuario || ''
+      }));
+      
+      if (dados.length === 0) {
+        alert('Nenhuma música carregada ainda. Carregue o Excel primeiro.');
+        return;
+      }
+      
+      const blob = new Blob([JSON.stringify(dados, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'historico.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      appendLog({ ts: now(), msg: `Exportado: ${dados.length} músicas`, nivel: 'info' });
+    })
+    .catch(e => {
+      appendLog({ ts: now(), msg: 'Erro ao exportar: ' + e, nivel: 'error' });
+    });
+}
+
+
+
+
 </script>
+
+
+
 </body>
 </html>

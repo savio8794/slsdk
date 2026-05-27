@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLSKD Audit</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0a0f;--surface:#12121a;--border:#1e1e2e;--accent:#7c6af7;--accent2:#f7c56a;--green:#4af7a0;--red:#f76a6a;--yellow:#f7c56a;--text:#e8e8f0;--muted:#5a5a7a;--mono:'JetBrains Mono',monospace;--sans:'Syne',sans-serif;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;}
+  .layout{display:grid;grid-template-columns:320px 1fr;grid-template-rows:64px 1fr;min-height:100vh;}
+  header{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;}
+  .logo{font-size:20px;font-weight:800;letter-spacing:-.5px;} .logo span{color:var(--accent);}
+  .counters{margin-left:auto;display:flex;gap:24px;align-items:center;}
+  .counter{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .counter-val{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;}
+  .counter-val.green{color:var(--green);} .counter-val.red{color:var(--red);}
+  .counter-val.yellow{color:var(--yellow);} .counter-val.purple{color:var(--accent);}
+  .counter-val.sucesso{color:var(--accent2);}
+  .counter-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  aside{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+  .panel{padding:18px 20px;border-bottom:1px solid var(--border);}
+  .panel-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:14px;}
+  input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;transition:border-color .2s;}
+  input[type="text"]:focus{border-color:var(--accent);}
+  .field-label{font-size:11px;color:var(--muted);display:block;margin:10px 0 4px;} .field-label:first-child{margin-top:0;}
+  .col-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .col-row label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;}
+  .btn{border:none;border-radius:6px;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:600;padding:8px 14px;transition:all .15s;letter-spacing:.3px;}
+  .btn:active{transform:scale(.97);}
+  .btn-start{background:var(--accent);color:#fff;width:100%;margin-top:12px;padding:10px;font-size:13px;}
+  .btn-start:hover{background:#6a58e8;}
+  .btn-export{background:var(--accent2);color:#000;width:100%;margin-top:8px;}
+  .btn-export:hover{background:#e8b058;}
+  .btn-reset{background:transparent;color:var(--red);border:1px solid rgba(247,106,106,.4);font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;font-family:var(--sans);font-weight:600;transition:all .15s;width:100%;margin-top:8px;}
+  .btn-reset:hover{background:rgba(247,106,106,.1);}
+  .btn-disabled{opacity:.4;pointer-events:none;}
+  main{display:flex;flex-direction:column;overflow:hidden;}
+  .table-wrap{flex:1;overflow-y:auto;padding:20px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);padding:0 12px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1;}
+  tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+  tbody tr:hover{background:rgba(124,106,247,.05);}
+  tbody td{padding:10px 12px;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
+  td:first-child{font-family:var(--sans);font-size:13px;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.5px;}
+  .badge-OK{background:rgba(74,247,160,.25);color:var(--green);}
+  .badge-FALSO-POSITIVO{background:rgba(247,106,106,.2);color:var(--red);}
+  .badge-FALTANDO{background:rgba(247,197,106,.15);color:var(--yellow);}
+  .badge-BAIXADO-SEM-REGISTRO{background:rgba(124,106,247,.2);color:var(--accent);}
+  .filter-row{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+  .filter-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .15s;font-weight:600;}
+  .filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .filter-btn:hover{border-color:var(--accent);}
+  .empty{text-align:center;padding:60px 20px;color:var(--muted);}
+  .empty-icon{font-size:48px;margin-bottom:12px;} .empty-text{font-size:14px;}
+  .log-panel{background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;height:200px;}
+  .log-header{padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);}
+  .log-body{flex:1;overflow-y:auto;padding:8px 16px;font-family:var(--mono);font-size:11px;line-height:1.7;}
+  .log-line{display:block;} .log-line.error{color:var(--red);} .log-line.warn{color:var(--yellow);} .log-line.info{color:var(--text);}
+  .log-ts{color:var(--muted);margin-right:8px;}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:middle;}
+  .status-dot.running{background:var(--green);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .fade-in{animation:fadeUp .4s ease forwards;opacity:0;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  @media(max-width:800px){.layout{grid-template-columns:1fr;} aside{border-right:none;border-bottom:1px solid var(--border);}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <header>
+    <div class="logo">SLSKD<span>.</span>AUDITORIA</div>
+    <div class="counters" id="counters" style="display:none;">
+      <div class="counter fade-in"><div class="counter-val green" id="cnt-ok">0</div><div class="counter-label">OK</div></div>
+      <div class="counter fade-in"><div class="counter-val red" id="cnt-falso">0</div><div class="counter-label">Falso Positivo</div></div>
+      <div class="counter fade-in"><div class="counter-val yellow" id="cnt-faltando">0</div><div class="counter-label">Faltando</div></div>
+      <div class="counter fade-in"><div class="counter-val purple" id="cnt-total">0</div><div class="counter-label">Total</div></div>
+      <div class="counter fade-in"><div class="counter-val sucesso" id="cnt-sucesso">0%</div><div class="counter-label">Sucesso</div></div>
+    </div>
+  </header>
+  <aside>
+    <div class="panel">
+      <div class="panel-title">Arquivos</div>
+      <label class="field-label">Arquivo Excel (desejadas)</label>
+      <input type="text" id="xlsx-path" value="/home/savio/slskd/Top Pop Dance.xlsx">
+      <div class="col-row">
+        <div><label>Coluna Música</label><input type="text" id="col-musica" value="Song"></div>
+        <div><label>Coluna Artista</label><input type="text" id="col-artista" value="Artist"></div>
+      </div>
+      <label class="field-label">Histórico JSON (SLSKD)</label>
+      <input type="text" id="json-path" value="/home/savio/slskd/historico.json">
+      <label class="field-label">Pasta de Downloads</label>
+      <input type="text" id="downloads-path" value="/home/savio/slskd/downloads">
+    </div>
+    <div class="panel">
+      <div class="panel-title">Configurações</div>
+      <label style="font-size:11px;color:var(--muted);margin-bottom:6px;display:block;">Similaridade mínima: <span style="color:var(--accent2);font-family:var(--mono);font-size:12px;" id="sim-val">85%</span></label>
+      <input type="range" id="sim-range" min="50" max="100" step="5" value="85" style="width:100%;accent-color:var(--accent);" oninput="document.getElementById('sim-val').textContent=this.value+'%'">
+      <button class="btn btn-start" id="btn-run" onclick="runAudit()">▶ Executar Auditoria</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Exportar</div>
+      <button class="btn btn-export" onclick="exportXLSX()">⬇ Exportar XLSX</button>
+      <button class="btn btn-reset" onclick="clearResults()">Limpar Resultados</button>
+    </div>
+  </aside>
+  <main>
+    <div class="table-wrap">
+      <div class="filter-row" id="filter-row" style="display:none;">
+        <button class="filter-btn active" onclick="setFilter('all',this)">Todos</button>
+        <button class="filter-btn" onclick="setFilter('OK',this)">OK</button>
+        <button class="filter-btn" onclick="setFilter('FALSO POSITIVO',this)">Falso Positivo</button>
+        <button class="filter-btn" onclick="setFilter('FALTANDO',this)">Faltando</button>
+        <button class="filter-btn" onclick="setFilter('BAIXADO SEM REGISTRO',this)">Sem Registro</button>
+      </div>
+      <div id="table-container">
+        <div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Configure os caminhos e execute a auditoria</div></div>
+      </div>
+    </div>
+    <div class="log-panel">
+      <div class="log-header"><span class="status-dot" id="log-dot"></span>Log em tempo real</div>
+      <div class="log-body" id="log-body"></div>
+    </div>
+  </main>
+</div>
+<script>
+let allData=[];let currentFilter='all';
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function now(){return new Date().toTimeString().slice(0,8);}
+function log(msg,n='info'){const b=document.getElementById('log-body');const l=document.createElement('span');l.className='log-line '+n;l.innerHTML='<span class="log-ts">'+now()+'</span>'+esc(msg);b.appendChild(l);b.scrollTop=b.scrollHeight;}
+function renderTable(data){
+  const f=currentFilter==='all'?data:data.filter(r=>r.DIAGNOSTICO===currentFilter);
+  const c=document.getElementById('table-container');
+  if(!f.length){c.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum resultado</div></div>';return;}
+  let h='<table><thead><tr><th>Song</th><th>Artist</th><th>Status SLSKD</th><th>Arquivo Real</th><th>Match %</th><th>Tamanho MB</th><th>Diagnóstico</th><th>Obs</th></tr></thead><tbody>';
+  f.forEach((r,i)=>{const bc='badge-'+r.DIAGNOSTICO.replace(/\s/g,'-');const mc=r['MATCH_%']>=90?'var(--green)':r['MATCH_%']>=85?'var(--yellow)':'var(--red)';
+    h+='<tr class="fade-in" style="animation-delay:'+(i*0.02)+'s"><td>'+esc(r.SONG)+'</td><td>'+esc(r.ARTIST)+'</td><td>'+esc(r.STATUS_SLSKD)+'</td><td>'+esc(r.ARQUIVO_REAL)+'</td><td style="color:'+mc+';font-weight:700">'+r["MATCH_%"]+'%</td><td>'+r.TAMANHO_MB+'</td><td><span class="badge '+bc+'">'+r.DIAGNOSTICO+'</span></td><td>'+esc(r.OBS)+'</td></tr>';
+  });
+  h+='</tbody></table>';c.innerHTML=h;
+}
+function updateCounters(d){
+  const ok=d.filter(r=>r.DIAGNOSTICO==='OK').length;
+  const fp=d.filter(r=>r.DIAGNOSTICO==='FALSO POSITIVO').length;
+  const ft=d.filter(r=>r.DIAGNOSTICO==='FALTANDO').length;
+  document.getElementById('cnt-ok').textContent=ok;
+  document.getElementById('cnt-falso').textContent=fp;
+  document.getElementById('cnt-faltando').textContent=ft;
+  document.getElementById('cnt-total').textContent=d.length;
+  document.getElementById('cnt-sucesso').textContent=d.length?Math.round(ok/d.length*100)+'%':'0%';
+  document.getElementById('counters').style.display='flex';
+}
+function setFilter(f,btn){currentFilter=f;document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTable(allData);}
+async function runAudit(){
+  const xlsx=document.getElementById('xlsx-path').value.trim();
+  const json=document.getElementById('json-path').value.trim();
+  const dl=document.getElementById('downloads-path').value.trim();
+  const sim=parseInt(document.getElementById('sim-range').value);
+  if(!xlsx){log('Informe o caminho do XLSX','error');return;}
+  const btn=document.getElementById('btn-run');
+  btn.innerHTML='<span class="spinner"></span> Auditando...';btn.classList.add('btn-disabled');
+  document.getElementById('log-dot').classList.add('running');
+  log('Iniciando auditoria...');log('XLSX: '+xlsx);log('Downloads: '+(dl||'(padrão)'));log('Histórico: '+(json||'(padrão)'));log('Similaridade: '+sim+'%');
+  try{
+    const r=await fetch('/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      xlsx_path:xlsx,json_path:json,downloads_path:dl,similaridade_min:sim,
+      col_musica:document.getElementById('col-musica').value.trim(),
+      col_artista:document.getElementById('col-artista').value.trim()
+    })});
+    const res=await r.json();
+    if(!res.ok){log('Erro: '+res.erro,'error');return;}
+    allData=res.relatorio;
+    log('Auditoria concluída! '+allData.length+' músicas.','info');
+    const counts={};allData.forEach(r=>{counts[r.DIAGNOSTICO]=(counts[r.DIAGNOSTICO]||0)+1;});
+    Object.entries(counts).forEach(([k,v])=>log('  '+k+': '+v,'warn'));
+    updateCounters(allData);document.getElementById('filter-row').style.display='flex';renderTable(allData);
+  }catch(e){log('Falha na conexão: '+e+'. O Flask está rodando na porta 5000?','error');}
+  finally{btn.innerHTML='▶ Executar Auditoria';btn.classList.remove('btn-disabled');document.getElementById('log-dot').classList.remove('running');}
+}
+async function exportXLSX(){
+  if(!allData.length){log('Nenhum dado','warn');return;}
+  try{const r=await fetch('/export',{method:'POST'});if(r.ok){const b=await r.blob();const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='auditoria_slskd.xlsx';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);log('XLSX exportado','info');}else{log('Erro ao exportar','error');}}catch(e){log('Erro: '+e,'error');}
+}
+function clearResults(){allData=[];currentFilter='all';document.getElementById('table-container').innerHTML='<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Configure os caminhos e execute a auditoria</div></div>';document.getElementById('filter-row').style.display='none';document.getElementById('counters').style.display='none';document.getElementById('log-body').innerHTML='';log('Limpo','warn');}
+</script>
+</body>
+</html>
