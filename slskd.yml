@@ -10,8 +10,8 @@ slskd:
     incomplete: /app/downloads/.incomplete
 
 soulseek:
-  username: "peracio"
-  password: "S@vio770621"
+  username: ""
+  password: ""
   listen_port: 50300
 
 web:
